@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced 8-Bit ALU Simulator</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #2b3d4d;
+            color: #fff;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            flex-direction: column;
+        }
+        .container {
+            width: 85%;
+            text-align: center;
+            padding: 20px;
+            background: #37474f;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            position: relative;
+        }
+        .row {
+            display: flex;
+            justify-content: center;
+            margin-top: 10px;
+        }
+        .bit-button {
+            width: 50px;
+            height: 50px;
+            font-size: 20px;
+            margin: 5px;
+            background-color: #0288d1;
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            cursor: pointer;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .bit-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+        }
+        .operation-btn {
+            padding: 14px 25px;
+            margin: 15px;
+            background-color: #009688;
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            transition: 0.3s ease;
+        }
+        .operation-btn:hover {
+            background-color: #00796b;
+        }
+        .output {
+            font-size: 24px;
+            margin-top: 30px;
+        }
+        .led {
+            width: 40px;
+            height: 40px;
+            margin: 5px;
+            border-radius: 50%;
+            background-color: #ddd;
+            opacity: 0;
+            transition: opacity 0.5s ease, background-color 0.5s ease;
+        }
+        .on {
+            background-color: #4caf50;
+            opacity: 1;
+        }
+        .off {
+            background-color: #f44336;
+            opacity: 1;
+        }
+        .led-container {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .alu-gate {
+            display: inline-block;
+            margin: 15px;
+            padding: 20px;
+            background-color: #455a64;
+            border-radius: 8px;
+            position: relative;
+            color: white;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        .gate-label {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 18px;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        .alu-gate-anim {
+            animation: gateAnim 3s ease-in-out forwards;
+        }
+        @keyframes gateAnim {
+            0% { opacity: 0; transform: scale(0.8); }
+            50% { opacity: 1; transform: scale(1.1); }
+            100% { opacity: 0; transform: scale(0.8); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>8-Bit Basit Alu</h1>
+
+    <div>
+        <h3>Girdi A</h3>
+        <div class="row" id="inputA"></div>
+    </div>
+    <div>
+        <h3>Girdi B</h3>
+        <div class="row" id="inputB"></div>
+    </div>
+
+    <div class="button-row">
+        <button class="operation-btn" onclick="performOperation('AND')">AND</button>
+        <button class="operation-btn" onclick="performOperation('OR')">OR</button>
+        <button class="operation-btn" onclick="performOperation('XOR')">XOR</button>
+        <button class="operation-btn" onclick="performOperation('ADD')">Topla</button>
+        <button class="operation-btn" onclick="performOperation('SUB')">Çıkar</button>
+        <button class="operation-btn" onclick="performOperation('MUL')">Çarp</button>
+        <button class="operation-btn" onclick="performOperation('DIV')">Böl</button>
+    </div>
+
+    <div class="output">
+        <h3>Çıktı</h3>
+        <div class="led-container" id="output"></div>
+    </div>
+
+    <div class="alu-gates">
+        <div class="alu-gate alu-gate-anim">
+            <div class="gate-label">AND Gate</div>
+        </div>
+        <div class="alu-gate alu-gate-anim">
+            <div class="gate-label">OR Gate</div>
+        </div>
+        <div class="alu-gate alu-gate-anim">
+            <div class="gate-label">XOR Gate</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const bitCount = 8;
+    let inputA = Array(bitCount).fill(0);
+    let inputB = Array(bitCount).fill(0);
+    let operationInProgress = false; // İşlem yapılıp yapılmadığını kontrol etmek için bir flag
+
+    // Dinamik olarak bit seçim butonları oluşturuluyor
+    function createBitButtons(containerId, inputArray) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = '';
+        for (let i = 0; i < bitCount; i++) {
+            const button = document.createElement('button');
+            button.classList.add('bit-button');
+            button.textContent = inputArray[i];
+            button.onclick = () => toggleBit(inputArray, i, containerId);
+            container.appendChild(button);
+        }
+    }
+
+    // Bitleri değiştir
+    function toggleBit(inputArray, index, containerId) {
+        inputArray[index] = inputArray[index] === 0 ? 1 : 0;
+        createBitButtons(containerId, inputArray);
+    }
+
+    // Mantıksal ve aritmetik işlemler
+    function performOperation(op) {
+        if (operationInProgress) return; // Eğer işlem yapılıyorsa, tekrar işlemi başlatma
+
+        operationInProgress = true; // İşlem başlatıldı
+        let a = parseInt(inputA.join(''), 2);
+        let b = parseInt(inputB.join(''), 2);
+        let result;
+
+        resetLEDs();
+        document.getElementById("output").style.opacity = "0";
+
+        // Devre animasyonları başlatılıyor
+        startGateAnimations();
+
+        setTimeout(() => {
+            switch (op) {
+                case 'AND':
+                    result = a & b;
+                    break;
+                case 'OR':
+                    result = a | b;
+                    break;
+                case 'XOR':
+                    result = a ^ b;
+                    break;
+                case 'ADD':
+                    result = a + b;
+                    break;
+                case 'SUB':
+                    result = a - b;
+                    break;
+                case 'MUL':
+                    result = a * b;
+                    break;
+                case 'DIV':
+                    result = Math.floor(a / b);
+                    break;
+                default:
+                    result = 0;
+            }
+
+            result = result & 0xFF;
+            displayOutput(result);
+
+            // İşlem tamamlandığında flag'i sıfırlıyoruz
+            operationInProgress = false;
+        }, 1000);
+    }
+
+    // LED'leri sıfırla
+    function resetLEDs() {
+        const outputContainer = document.getElementById('output');
+        outputContainer.innerHTML = '';
+    }
+
+    // Çıktıyı LED'lerle göster
+    function displayOutput(result) {
+        const outputContainer = document.getElementById('output');
+        const binaryResult = result.toString(2).padStart(bitCount, '0');
+
+        setTimeout(() => {
+            for (let i = 0; i < bitCount; i++) {
+                const led = document.createElement('div');
+                led.classList.add('led');
+                if (binaryResult[i] === '1') {
+                    led.classList.add('on');
+                    led.textContent = '1'; // 1'ler için yeşil kutucuklara 1 yazdırılıyor
+                } else {
+                    led.classList.add('off');
+                    led.textContent = '0'; // 0'lar için kırmızı kutucuklara 0 yazdırılıyor
+                }
+                outputContainer.appendChild(led);
+            }
+            document.getElementById("output").style.opacity = "1";
+        }, 500);
+    }
+
+    // Devre animasyonlarını başlat
+    function startGateAnimations() {
+        const gates = document.querySelectorAll('.alu-gate');
+        gates.forEach(gate => gate.classList.add('alu-gate-anim'));
+    }
+
+    // Başlangıçta input A ve B butonlarını oluştur
+    createBitButtons('inputA', inputA);
+    createBitButtons('inputB', inputB);
+</script>
+
+</body>
+</html>

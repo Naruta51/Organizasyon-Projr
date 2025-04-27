@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CPU - CACHE - RAM Yatay + ALU</title>
+  <style>
+    body { background: #0f172a; margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+    h1 { color: white; text-align: center; }
+    #control-panel { text-align: center; padding: 20px; }
+    input, select, button { padding: 8px; margin: 5px; font-size: 16px; border-radius: 8px; border: none; }
+    canvas { display: block; margin: auto; background: #1e2b38; cursor: pointer; }
+    #status {
+      margin-top: 10px;
+      font-size: 18px;
+      font-weight: bold;
+      padding: 10px;
+      border-radius: 8px;
+      width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+      text-align: center;
+    }
+    #info {
+      text-align: center;
+      color: #00e5ff;
+      font-size: 20px;
+      margin-top: 10px;
+      height: 30px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>⚙️ CPU - CACHE - RAM </h1>
+
+<div id="control-panel">
+  <input type="number" id="data" placeholder="Veri Giriniz (0-255)">
+  <input type="number" id="readAddress" placeholder="Veri Adresi (0-7)">
+  <select id="cachePolicy">
+    <option value="LRU">LRU</option>
+    <option value="FIFO">FIFO</option>
+  </select>
+  <select id="writePolicy">
+    <option value="WriteThrough">Üzerine yaz</option>
+    <option value="WriteBack">Geri Yaz</option>
+  </select>
+  <input type="number" id="ramSize" placeholder="RAM Boyutu" value="8">
+  <button onclick="startProcess()">Veriyi Yaz</button>
+  <button onclick="readData()">Veriyi Oku</button>
+</div>
+
+<h3 id="status">Durum: Bekleniyor...</h3>
+<div id="info"></div>
+
+<canvas id="canvas" width="1600" height="700"></canvas>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let ram = Array(8).fill(null);
+let cache = [];
+let cacheSize = 4;
+let registers = { DATA: 0 };
+let statusBox = document.getElementById('status');
+let infoBox = document.getElementById('info');
+
+let particle = { x: 170, y: 400, active: false, direction: "right", address: null, value: null };
+
+// ALU koordinatları
+const alu = {
+  x: 100,
+  y: 250,
+  width: 150,
+  height: 50
+};
+
+function setStatus(message, type = "info") {
+  statusBox.innerText = message;
+  if (type === "success") {
+    statusBox.style.background = "#2e7d32";
+    statusBox.style.color = "#ffffff";
+  } else if (type === "error") {
+    statusBox.style.background = "#c62828";
+    statusBox.style.color = "#ffffff";
+  } else {
+    statusBox.style.background = "#1565c0";
+    statusBox.style.color = "#ffffff";
+  }
+}
+
+function resizeRAM(size) {
+  ram = Array(size).fill(null);
+}
+
+function drawCPU() {
+  ctx.fillStyle = "#4CAF50";
+  ctx.fillRect(100, 350, 150, 100);
+  ctx.strokeStyle = "#66FF66";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(100, 350, 150, 100);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 18px Arial";
+  ctx.fillText("CPU", 150, 410);
+}
+
+function drawALU() {
+  ctx.fillStyle = "#ff9800";
+  ctx.fillRect(alu.x, alu.y, alu.width, alu.height);
+  ctx.strokeStyle = "#FFCC00";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(alu.x, alu.y, alu.width, alu.height);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 18px Arial";
+  ctx.fillText("ALU", alu.x + 45, alu.y + 30);
+}
+
+function drawCache() {
+  ctx.fillStyle = "#455A64";
+  ctx.fillRect(400, 350, 240, 100);
+  ctx.strokeStyle = "#00e5ff";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(400, 350, 240, 100);
+
+  for (let i = 0; i < cacheSize; i++) {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(420 + i * 55, 370, 45, 60);
+    ctx.strokeStyle = "#2196f3";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(420 + i * 55, 370, 45, 60);
+
+    if (cache[i]) {
+      ctx.fillStyle = "#000000";
+      ctx.font = "bold 14px Arial";
+      let valueText = `${cache[i].value}`;
+      let textWidth = ctx.measureText(valueText).width;
+      ctx.fillText(valueText, 420 + i * 55 + (45 - textWidth) / 2, 405);
+    }
+  }
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 14px Arial";
+  ctx.fillText("CACHE", 470, 340);
+}
+
+function drawRAM() {
+  ctx.fillStyle = "#2e7d32";
+  ctx.fillRect(800, 350, 600, 100);
+  ctx.strokeStyle = "#66FF66";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(800, 350, 600, 100);
+
+  for (let i = 0; i < ram.length; i++) {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(820 + i * 70, 370, 50, 60);
+    ctx.strokeStyle = "#66FF66";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(820 + i * 70, 370, 50, 60);
+
+    if (ram[i] !== null) {
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 16px Arial";
+      let valueText = ram[i].toString();
+      let textWidth = ctx.measureText(valueText).width;
+      let textX = 820 + i * 70 + (50 - textWidth) / 2;
+      let textY = 370 + (60 + 16) / 2;
+      ctx.fillText(valueText, textX, textY);
+    }
+  }
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 14px Arial";
+  ctx.fillText("RAM", 1080, 340);
+}
+
+function drawBusLines() {
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 2;
+
+  ctx.beginPath();
+  ctx.moveTo(250, 400);
+  ctx.lineTo(400, 400);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(640, 400);
+  ctx.lineTo(800, 400);
+  ctx.stroke();
+}
+
+function drawParticles() {
+  if (particle.active) {
+    ctx.beginPath();
+    ctx.fillStyle = "#00e5ff";
+    ctx.arc(particle.x, particle.y, 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function moveParticles() {
+  if (particle.active) {
+    if (particle.direction === "right") {
+      if (particle.x < 400) {
+        particle.x += 2;
+      } else {
+        particle.active = false;
+        setStatus("⚡ Cache'e ulaştı, veri RAM'e yönlendiriliyor...");
+        particle.x = 570;
+        particle.active = true;
+        particle.direction = "right2";
+      }
+    } else if (particle.direction === "right2") {
+      if (particle.x < 800) {
+        particle.x += 2;
+      } else {
+        particle.active = false;
+        setStatus("✅ Veri RAM'e kaydedildi!", "success");
+        infoBox.innerText = "";
+      }
+    } else if (particle.direction === "left") {
+      if (particle.x > 250) {
+        particle.x -= 2;
+      } else {
+        particle.active = false;
+        setStatus("✅ Veri CPU'ya ulaştı!", "success");
+        infoBox.innerText = "";
+      }
+    }
+  }
+}
+
+function drawSystem() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawBusLines();
+  drawCPU();
+  drawALU();
+  drawCache();
+  drawRAM();
+  drawParticles();
+}
+
+function accessMemory(address, value) {
+  const policy = document.getElementById('cachePolicy').value;
+  const writePolicy = document.getElementById('writePolicy').value;
+
+  let cacheHit = cache.find(entry => entry.addr === address);
+
+  if (cacheHit) {
+    cacheHit.hit = true;
+    setStatus(`✅ CACHE HIT (Adres ${address})`, "success");
+  } else {
+    setStatus(`⚡ CACHE MISS (RAM'den yükleniyor...)`, "info");
+
+    if (cache.length >= cacheSize) {
+      if (policy === "FIFO") {
+        const evictedCache = cache.shift();
+        if (evictedCache) ram[evictedCache.addr] = evictedCache.value;
+      } else if (policy === "LRU") {
+        const evictedCache = cache.pop();
+        if (evictedCache) ram[evictedCache.addr] = evictedCache.value;
+      }
+    }
+    cache.push({ addr: address, value: ram[address], time: Date.now(), hit: false });
+  }
+
+  if (writePolicy === "WriteThrough") {
+    ram[address] = value;
+    cache.find(c => c.addr === address).value = value;
+  } else if (writePolicy === "WriteBack") {
+    let cachedEntry = cache.find(c => c.addr === address);
+    if (cachedEntry) cachedEntry.value = value;
+  }
+}
+
+function startProcess() {
+  const data = parseInt(document.getElementById('data').value);
+  const ramSize = parseInt(document.getElementById('ramSize').value) || 8;
+
+  if (ram.length !== ramSize) resizeRAM(ramSize);
+
+  registers.DATA = data;
+
+  let emptyIndices = ram.map((v, i) => v === null ? i : -1).filter(i => i !== -1);
+  let address = emptyIndices.length > 0 ? emptyIndices[Math.floor(Math.random() * emptyIndices.length)] : ram.findIndex(v => v !== null);
+
+  ram[address] = data;
+
+  accessMemory(address, data);
+
+  particle.x = 170;
+  particle.y = 400;
+  particle.active = true;
+  particle.direction = "right";
+
+  infoBox.innerText = `Adres: ${address}, Veri: ${data}`;
+}
+
+function readData() {
+  const readAddress = parseInt(document.getElementById('readAddress').value);
+
+  if (readAddress < 0 || readAddress >= ram.length) {
+    setStatus("⚠️ Geçersiz Adres!", "error");
+    return;
+  }
+
+  const data = ram[readAddress];
+
+  if (data !== null) {
+    setStatus(`✅ RAM'den Adres ${readAddress} Okundu: ${data}`, "success");
+    accessMemory(readAddress, data);
+
+    particle.x = 800;
+    particle.y = 400;
+    particle.active = true;
+    particle.direction = "left";
+
+    infoBox.innerText = `Adres: ${readAddress}, Veri: ${data}`;
+  } else {
+    setStatus(`⚠️ RAM'de Adres ${readAddress} Boş!`, "error");
+  }
+}
+
+// Canvas'a tıklama
+canvas.addEventListener('click', function(event) {
+  const rect = canvas.getBoundingClientRect();
+  const mouseX = event.clientX - rect.left;
+  const mouseY = event.clientY - rect.top;
+
+  if (mouseX >= alu.x && mouseX <= alu.x + alu.width &&
+      mouseY >= alu.y && mouseY <= alu.y + alu.height) {
+    window.location.href = 'alu.html';
+  }
+});
+
+// Animasyon
+function animate() {
+  moveParticles();
+  drawSystem();
+  requestAnimationFrame(animate);
+}
+
+animate();
+</script>
+
+</body>
+</html>
